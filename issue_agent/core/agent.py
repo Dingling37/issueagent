@@ -11,6 +11,8 @@ from ..trace.tracer import Tracer
 from ..workspace.workspace import Workspace
 from ..verification.verifier import Verifier, PendingVerifier, IssueVerifier
 from ..planning.planner import Planner
+from ..delivery.result import ResultBuilder, result_payload
+import json
 from ..tools.test import TestRunner
 from ..tools.git import GitTools
 from ..workspace.changes import RepositoryChanges
@@ -40,6 +42,8 @@ class Agent:
             lambda context, budget: self.call_model(context, [], "verification", max_tokens=budget))
         self.workspace = workspace
         self.custom_verifier = verifier is not None
+        self.metrics: dict = {}
+        self.result: dict = {}
         self.registry = ToolRegistry(self.state, self.tracer)
         files = FileTools(workspace, self.state, self.tracer)
         search = SearchTools(files)
@@ -122,6 +126,9 @@ class Agent:
                     "VERIFICATION_PASSED" if verification.passed else "VERIFICATION_FAILED"),
                                    state.step_count, **asdict(verification))
                 if verification.passed:
+                    # 显式注入的测试验证器只用于循环单测；生产必须具备真实交付证据。
+                    if not self.custom_verifier:
+                        ResultBuilder(self.changes, self.tracer).build(state)
                     state.status = "completed"
                     for item in state.plan:
                         item["status"] = "completed"
@@ -149,5 +156,7 @@ class Agent:
         finally:
             # 即使上面 return 或发生异常，也执行这里，把最终状态和指标保存下来。
             self.tracer.record("TASK_STOPPED", state.step_count, status=state.status, error=state.error)
-            self.tracer.finish(state)
+            self.metrics = self.tracer.finish(state)
+            self.result = result_payload(state, self.metrics, str(self.tracer.directory))
+            self.tracer.save("result.json", json.dumps(self.result, ensure_ascii=False, indent=2))
         return state

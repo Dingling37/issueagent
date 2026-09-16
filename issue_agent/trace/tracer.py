@@ -47,7 +47,8 @@ class Tracer:
                    "verification_retries": state.verification_retries,
                    "test_failures": sum(not item["passed"] for item in state.test_results),
                    "elapsed_seconds": monotonic() - self.started,
-                   "modified_files": len(state.files_modified)}
+                   "modified_files": len(state.files_modified),
+                   "final_changed_files": len(state.changed_files)}
         self.save("state.json", json.dumps(state.to_dict(), ensure_ascii=False, indent=2))
         self.save("metrics.json", json.dumps(metrics, indent=2))
         return metrics

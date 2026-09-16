@@ -10,7 +10,7 @@ from issue_agent.workspace.repository import inspect_repository
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Issue Agent — Phase 3: plan, test, repair and verify")
+    parser = argparse.ArgumentParser(description="Issue Agent — Phase 4: verified changes and local PR artifacts")
     #创建一个解析器
     parser.add_argument("--repo", required=True, help="Local Git repository root")
     parser.add_argument("--issue", required=True)
@@ -33,12 +33,7 @@ def main() -> int:
         agent = Agent(workspace, args.issue, model, args.max_steps,
                       test_timeout=args.test_timeout, verification_model=reviewer)
         state = agent.run()
-        print(json.dumps({"status": state.status, "error": state.error,
-                          "files_modified": state.files_modified,
-                          "response": state.final_response,
-                          "last_test": state.test_results[-1] if state.test_results else None,
-                          "diff_path": state.diff_path,
-                          "outputs": str(agent.tracer.directory)}, ensure_ascii=False, indent=2))
+        print(json.dumps(agent.result, ensure_ascii=False, indent=2))
         # 退出码：0 表示真正完成；2 表示未完成；下面的 1 表示启动等异常。
         return 0 if state.status == "completed" else 2
     except Exception as exc:

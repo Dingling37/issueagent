@@ -27,3 +27,7 @@ LLM 历史总结、Hooks 框架、Memory、Skills 加载、SubAgent、Teams、MC
 Planner 采用简单固定阶段，测试失败及验证失败均回到同一个 Agent 循环。
 Git 只读和任务差异因验证需要提前实现；PR 文案仍属于 Phase 4。
 保留 PendingVerifier 仅用于显式注入的基础测试，生产默认使用 IssueVerifier。
+
+## Phase 4 已落地
+
+delivery/result.py 使用任务与测试证据生成本地 PR 标题、描述和统一 result.json；没有新 Agent 或额外模型调用。

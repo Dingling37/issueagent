@@ -1,7 +1,7 @@
 # Issue Agent
 
-独立的单 Agent Issue-to-PR 框架，当前完成 Phase 3：规划、文件修改、Java 测试、失败反馈和双重验证。
-PR Title/Description 尚未实现，不自动 commit、push 或创建 GitHub PR。
+独立的单 Agent Issue-to-PR 框架，当前完成 Phase 4：规划、文件修改、Java 测试、失败反馈、双重验证和本地 PR 产物。
+自动生成 PR Title/Description，但不自动 commit、push 或创建 GitHub PR。
 
 ## 快速使用
 
@@ -111,7 +111,7 @@ python demo_phase3.py --repo C:\path\to\new-demo
 演示和可选 Maven 集成测试真实执行编译和 JUnit，验证 3 项失败 → 修复 → 4 项通过。
 其中模型与审查响应固定，不代表真实模型自主完成能力已经评测通过。
 
-来源与许可见 [MIGRATION.md](MIGRATION.md)、[LICENSE](LICENSE)。后续 Phase 4 添加 PR 文案及产物整理。
+来源与许可见 [MIGRATION.md](MIGRATION.md)、[LICENSE](LICENSE)。后续重点为更多真实仓库验收和失败场景评测。
 
 ## 验证截断恢复（新增）
 
@@ -125,3 +125,21 @@ events.jsonl 新增 VERIFICATION_ATTEMPT_FAILED、VERIFICATION_RETRY、VERIFICAT
 LLM_CALL 包含 max_tokens。metrics.json 的 verification_retries 记录内部重试次数，
 verification_failures 只统计返回修复循环的验证拒绝。每次重试的调用和 token 仍计入总数。
 验证上下文增加首轮和近期测试摘要（最多 10 项），用于核对失败→通过的过程。
+
+## Phase 4 本地交付
+
+只有生产 Verifier 通过后，ResultBuilder 才生成以下文件：
+
+- pr-title.txt：Issue 第一条有效行生成的标题，最多 100 个字符。
+- pr-description.md：任务、实际变更文件、测试命令、真实测试数量、历次测试结果。
+- task.diff：相对于任务开始时的变化，包含新增文件。
+- git.diff：只读 Git 差异，可能包括任务开始前已有的改动；审阅本次任务以 task.diff 为准。
+
+成功或失败都会保存 result.json，CLI 输出与它完全一致，含状态、错误、产物路径和 metrics。
+changed_files 是最终实际变化列表，files_modified 是工具曾写入的历史列表，两者可能不同。
+metrics.final_changed_files 统计交付时实际变化数量。失败任务不会生成 PR 文案。
+
+文案用确定性模板，不额外调用 LLM，避免重新生成测试数量时出现错误，也不增加 token 费用。
+标题与摘要较朴素，提交前可以人工润色。产物路径相对于目标仓库根目录。
+交付前再次核对源码指纹，防止测试后源码变化还生成成功产物。
+现有日志不会被覆盖，也不会对旧任务自动补发 PR 文案。

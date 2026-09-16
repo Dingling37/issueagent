@@ -36,6 +36,11 @@ class AgentState:
     repository: dict[str, Any] = field(default_factory=dict)
     final_response: str = ""
     diff_path: str | None = None
+    # 交付阶段记录最终仍存在的变化，区别于曾经写过的 files_modified。
+    changed_files: list[str] = field(default_factory=list)
+    pr_title: str | None = None
+    pr_description: str | None = None
+    artifacts: dict[str, str] = field(default_factory=dict)
     # 生命周期：pending → running → completed / failed / verification_unavailable。
     status: str = "pending"
     error: str | None = None
