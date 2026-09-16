@@ -15,9 +15,10 @@ class ToolRegistry:
     def register(self, tool: Tool) -> None:
         if tool.name in self.tools:
             raise ValueError(f"Duplicate tool: {tool.name}")
-        # 当前未实现受限测试执行器，所以 EXECUTE 和 DANGEROUS 都拒绝注册。
-        if tool.permission in (Permission.DANGEROUS, Permission.EXECUTE):
-            raise ValueError("Phase 2 does not expose executable commands")
+        # EXECUTE 只允许无参数的 run_test；危险工具始终禁止。
+        if tool.permission == Permission.DANGEROUS or (
+            tool.permission == Permission.EXECUTE and (tool.name != "run_test" or tool.parameters)):
+            raise ValueError("Only the fixed argument-free run_test command may execute")
         self.tools[tool.name] = tool
 
     def schemas(self) -> list[dict]:

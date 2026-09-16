@@ -27,7 +27,7 @@ class ContextManager:
             selected.insert(0, group)
             size += length
         # 长期保留的任务锚点：历史变短后，模型仍能看到原始 Issue 和当前状态。
-        # plan/test_results 目前是预留内容，后续模块接入后才会有真实数据。
+        # plan 是当前计划，test_results 只包含摘要与日志路径，不包含整份测试日志。
         anchor = {"issue": state.task, "repo_path": state.repo_path, "plan": state.plan,
                   "current_step": state.current_step, "files_modified": state.files_modified,
                   "test_summaries": state.test_results[-3:]}

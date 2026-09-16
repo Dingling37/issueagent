@@ -9,7 +9,7 @@ from issue_agent.core.model import ModelResponse, ScriptedModelClient
 from issue_agent.core.state import AgentState
 from issue_agent.context.manager import ContextManager
 from issue_agent.tools.base import Tool, Permission
-from issue_agent.verification.verifier import VerificationResult
+from issue_agent.verification.verifier import VerificationResult, PendingVerifier
 from issue_agent.workspace.workspace import Workspace
 
 
@@ -31,6 +31,7 @@ class FoundationTests(unittest.TestCase):
         self.workspace = Workspace(self.root)
 
     def agent(self, responses: list[ModelResponse], **kwargs: object) -> Agent:
+        kwargs.setdefault("verifier", PendingVerifier())
         return Agent(self.workspace, "Change Example and test it", ScriptedModelClient(responses), **kwargs)
 
     def test_workspace_escape_and_metadata(self) -> None:

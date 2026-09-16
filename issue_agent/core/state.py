@@ -9,9 +9,9 @@ class AgentState:
     # 原始 Issue 和目标仓库位置，供每轮上下文与日志使用。
     task: str
     repo_path: str
-    # 预留：Phase 3 的 Planner 尚未实现，目前 plan 为空。
+    # Planner 生成的结构化阶段计划。
     plan: list[dict[str, Any]] = field(default_factory=list)
-    # 预留的计划步骤位置，不等于下面的模型循环轮数 step_count。
+    # 当前计划阶段，不等于下面的模型循环轮数 step_count。
     current_step: int = 0
     # 模型回复和工具结果；ContextManager 从中选取近期交互发送给模型。
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -21,7 +21,7 @@ class AgentState:
     files_modified: list[str] = field(default_factory=list)
     # 工具执行记录与完整输出路径；大段输出本身保存在日志文件中。
     tool_history: list[dict[str, Any]] = field(default_factory=list)
-    # 预留：测试执行器尚未接入，当前不会产生真实测试结果。
+    # 每次测试的结构化结果，完整输出另存日志。
     test_results: list[dict[str, Any]] = field(default_factory=list)
     # 统计模型 API 返回的输入/输出 token 数量。
     token_usage: dict[str, int] = field(default_factory=lambda: {"input": 0, "output": 0})
@@ -30,6 +30,12 @@ class AgentState:
     # 当前合计响应截断重试和验证拒绝次数，不包含 SDK 内部网络重试。
     retry_count: int = 0
     llm_calls: int = 0
+    verification_failures: int = 0
+    verification_retries: int = 0  # 验证回复截断/格式错误后的内部重试
+    verification_results: list[dict[str, Any]] = field(default_factory=list)
+    repository: dict[str, Any] = field(default_factory=dict)
+    final_response: str = ""
+    diff_path: str | None = None
     # 生命周期：pending → running → completed / failed / verification_unavailable。
     status: str = "pending"
     error: str | None = None

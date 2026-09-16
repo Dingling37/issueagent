@@ -10,11 +10,13 @@ from issue_agent.workspace.repository import inspect_repository
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Issue Agent — Phase 2 foundation (not a complete MVP)")
+    parser = argparse.ArgumentParser(description="Issue Agent — Phase 3: plan, test, repair and verify")
     #创建一个解析器
     parser.add_argument("--repo", required=True, help="Local Git repository root")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--model")
+    parser.add_argument("--verification-model", help="Optional reviewer model; defaults to execution model")
+    parser.add_argument("--test-timeout", type=int, default=300, help="Test timeout in seconds (1–1800)")
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--inspect", action="store_true", help="Inspect repository without calling a model or editing files")
     args = parser.parse_args()
@@ -26,10 +28,16 @@ def main() -> int:
         if args.inspect:
             print(json.dumps(repository, ensure_ascii=False, indent=2))
             return 0
-        agent = Agent(workspace, args.issue, AnthropicModelClient(args.model), args.max_steps)
+        model = AnthropicModelClient(args.model)
+        reviewer = AnthropicModelClient(args.verification_model) if args.verification_model else model
+        agent = Agent(workspace, args.issue, model, args.max_steps,
+                      test_timeout=args.test_timeout, verification_model=reviewer)
         state = agent.run()
         print(json.dumps({"status": state.status, "error": state.error,
                           "files_modified": state.files_modified,
+                          "response": state.final_response,
+                          "last_test": state.test_results[-1] if state.test_results else None,
+                          "diff_path": state.diff_path,
                           "outputs": str(agent.tracer.directory)}, ensure_ascii=False, indent=2))
         # 退出码：0 表示真正完成；2 表示未完成；下面的 1 表示启动等异常。
         return 0 if state.status == "completed" else 2

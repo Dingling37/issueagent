@@ -7,7 +7,7 @@ from collections.abc import Iterator
 class Workspace:
     """File capability boundary; not an OS sandbox for future build processes."""
 
-    excluded = {".git", ".task_outputs", ".venv", "node_modules", "__pycache__", "target", "build"}
+    excluded = {".git", ".task_outputs", ".venv", ".gradle", ".idea", ".pytest_cache", "node_modules", "__pycache__", "target", "build"}
 
     def __init__(self, repo_path: str | Path) -> None:
         self.root = Path(repo_path).resolve(strict=True)

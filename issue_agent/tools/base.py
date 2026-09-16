@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Callable
 
 
-# 四个权限标签中，目前 Registry 只接受 READ 和 WRITE。
+# EXECUTE 仅允许固定 run_test；DANGEROUS 始终禁止。
 class Permission(str, Enum):
     READ = "READ"
     WRITE = "WRITE"

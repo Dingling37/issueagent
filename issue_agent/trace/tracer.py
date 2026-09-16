@@ -38,12 +38,14 @@ class Tracer:
         return self.save(f"tool-{self.sequence:04d}.log", content)
 
     def finish(self, state: AgentState) -> dict[str, Any]:
-        # 汇总现有状态；tests 当前为 0，因为真实 TestRunner 尚未接入。
-        # 注意 verification_failures 暂取 retry_count，也含响应截断重试，尚非纯验证失败数。
+        # 汇总真实测试和调用指标。
+        # 验证失败不再混入模型截断重试。
         metrics = {"llm_calls": state.llm_calls, "tool_calls": len(state.tool_history),
                    "token_usage": state.token_usage, "tests": len(state.test_results),
                    "tool_failures": sum(not item["ok"] for item in state.tool_history),
-                   "verification_failures": state.retry_count,
+                   "verification_failures": state.verification_failures,
+                   "verification_retries": state.verification_retries,
+                   "test_failures": sum(not item["passed"] for item in state.test_results),
                    "elapsed_seconds": monotonic() - self.started,
                    "modified_files": len(state.files_modified)}
         self.save("state.json", json.dumps(state.to_dict(), ensure_ascii=False, indent=2))

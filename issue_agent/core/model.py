@@ -20,7 +20,7 @@ class ModelResponse:
 
 # Protocol 表达接口约定：只要有符合签名的 call 方法，就能交给 Agent 使用。
 class ModelClient(Protocol):
-    def call(self, context: list[dict], tools: list[dict]) -> ModelResponse: ...
+    def call(self, context: list[dict], tools: list[dict], *, max_tokens: int = 4096) -> ModelResponse: ...
 
 
 class AnthropicModelClient:
@@ -35,10 +35,10 @@ class AnthropicModelClient:
         self.client = Anthropic(base_url=os.environ.get("ANTHROPIC_BASE_URL"),
                                 timeout=120.0, max_retries=2)
 
-    def call(self, context: list[dict], tools: list[dict]) -> ModelResponse:
+    def call(self, context: list[dict], tools: list[dict], *, max_tokens: int = 4096) -> ModelResponse:
         from ..prompts.issue_agent import SYSTEM
         response = self.client.messages.create(model=self.model, system=SYSTEM,
-                                               messages=context, tools=tools, max_tokens=4096)
+                                               messages=context, tools=tools, max_tokens=max_tokens)
         # SDK 对象转为普通字典，便于写 JSON 日志和保存到 AgentState.messages。
         return ModelResponse([block.model_dump(exclude_none=True) for block in response.content],
                              response.usage.input_tokens, response.usage.output_tokens,
@@ -51,9 +51,11 @@ class ScriptedModelClient:
     """Deterministic test double; never used implicitly by the real CLI."""
     responses: list[ModelResponse]
     contexts: list[list[dict]] = field(default_factory=list)
+    token_limits: list[int] = field(default_factory=list)
 
-    def call(self, context: list[dict], tools: list[dict]) -> ModelResponse:
+    def call(self, context: list[dict], tools: list[dict], *, max_tokens: int = 4096) -> ModelResponse:
         self.contexts.append(context)
+        self.token_limits.append(max_tokens)
         if not self.responses:
             raise RuntimeError("Scripted model exhausted")
         return self.responses.pop(0)

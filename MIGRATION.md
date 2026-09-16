@@ -20,3 +20,10 @@ LLM 历史总结、Hooks 框架、Memory、Skills 加载、SubAgent、Teams、MC
 
 按 Phase 2 先完成可测试基础设施，后续再逐阶段接入 Planner、测试和真实完成判定。
 当前完成判定默认失败，避免临时实现误导用户以为整个 MVP 已经可交付。
+
+## Phase 3 已落地
+
+新增 planning/planner.py、tools/test.py、workspace/changes.py、tools/git.py 和真实 IssueVerifier。
+Planner 采用简单固定阶段，测试失败及验证失败均回到同一个 Agent 循环。
+Git 只读和任务差异因验证需要提前实现；PR 文案仍属于 Phase 4。
+保留 PendingVerifier 仅用于显式注入的基础测试，生产默认使用 IssueVerifier。
