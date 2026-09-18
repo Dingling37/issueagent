@@ -3,6 +3,7 @@
 独立的单 Agent Issue-to-PR 框架，当前完成 Phase 4：规划、文件修改、Java 测试、失败反馈、双重验证和本地 PR 产物。
 自动生成 PR Title/Description，但不自动 commit、push 或创建 GitHub PR。
 已有 Maven、Gradle 真实模型闭环记录。能力证据、复现命令与剩余限制见 [MVP 验收记录](ACCEPTANCE.md)。
+现版本已作为 Git Baseline 固定；隔离 Hidden Tests 的单任务评测见 [Benchmark 说明](BENCHMARK.md)。
 
 ## 快速使用
 

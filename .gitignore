@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .venv/
 .task_outputs/
+benchmark_runs/
