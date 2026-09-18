@@ -2,6 +2,7 @@
 
 独立的单 Agent Issue-to-PR 框架，当前完成 Phase 4：规划、文件修改、Java 测试、失败反馈、双重验证和本地 PR 产物。
 自动生成 PR Title/Description，但不自动 commit、push 或创建 GitHub PR。
+已有 Maven、Gradle 真实模型闭环记录。能力证据、复现命令与剩余限制见 [MVP 验收记录](ACCEPTANCE.md)。
 
 ## 快速使用
 
@@ -131,7 +132,7 @@ verification_failures 只统计返回修复循环的验证拒绝。每次重试�
 只有生产 Verifier 通过后，ResultBuilder 才生成以下文件：
 
 - pr-title.txt：Issue 第一条有效行生成的标题，最多 100 个字符。
-- pr-description.md：任务、实际变更文件、测试命令、真实测试数量、历次测试结果。
+- pr-description.md：任务、成功审查的改动说明、实际变更文件、测试命令、真实测试数量、历次测试结果。
 - task.diff：相对于任务开始时的变化，包含新增文件。
 - git.diff：只读 Git 差异，可能包括任务开始前已有的改动；审阅本次任务以 task.diff 为准。
 
@@ -139,7 +140,10 @@ verification_failures 只统计返回修复循环的验证拒绝。每次重试�
 changed_files 是最终实际变化列表，files_modified 是工具曾写入的历史列表，两者可能不同。
 metrics.final_changed_files 统计交付时实际变化数量。失败任务不会生成 PR 文案。
 
-文案用确定性模板，不额外调用 LLM，避免重新生成测试数量时出现错误，也不增加 token 费用。
-标题与摘要较朴素，提交前可以人工润色。产物路径相对于目标仓库根目录。
+文案用确定性模板，不额外调用 LLM；摘要复用最后一次成功验证的 reason，标注为
+Model-reviewed change summary。它是模型对代码差异的审查说明，仍需要人工审阅，
+不是把执行模型的“我完成了”直接写进交付物。旧记录缺少结构化说明时回退到基础模板。
+Verification 和 Test history 中的数量始终来自实际测试记录，不从模型文字提取。
+标题仍取 Issue 首行，提交前可以人工润色。产物路径相对于目标仓库根目录。
 交付前再次核对源码指纹，防止测试后源码变化还生成成功产物。
 现有日志不会被覆盖，也不会对旧任务自动补发 PR 文案。
