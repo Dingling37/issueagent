@@ -56,8 +56,8 @@ class Agent:
             Tool("list_files", "List repository files, excluding generated directories", {}, search.list_files),
             Tool("read_file", "Read a UTF-8 file, at most 400 lines", {"path": str, "start_line": int, "end_line": int}, files.read_file),
             Tool("search_code", "Search literal text in repository files", {"query": str}, search.search_code),
-            Tool("edit_file", "Replace one unique exact text match", {"path": str, "old_text": str, "new_text": str}, files.edit_file, Permission.WRITE),
-            Tool("create_file", "Create a new UTF-8 file; never overwrite", {"path": str, "content": str}, files.create_file, Permission.WRITE),
+            Tool("edit_file", "Modify an existing UTF-8 file, including adding tests to an existing test class. Read the current file with read_file first, then provide old_text that uniquely matches the content to replace. Use this tool even when replacing the entire contents of an existing file.", {"path": str, "old_text": str, "new_text": str}, files.edit_file, Permission.WRITE),
+            Tool("create_file", "Create a new UTF-8 file only at a path that does not exist. Check repository files before choosing this tool. Never use it for an existing file, even to replace its entire contents; use read_file followed by edit_file instead. Existing files are never overwritten.", {"path": str, "content": str}, files.create_file, Permission.WRITE),
         ]:
             self.registry.register(tool)
 
