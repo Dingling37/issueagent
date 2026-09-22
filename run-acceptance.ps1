@@ -2,7 +2,7 @@
 # 不保存密钥、不自动提交代码。将真实任务交给 main.py，而不是模拟模型。
 $ErrorActionPreference = 'Stop'
 $agentPython = 'C:\Users\崔佑齐\PycharmProjects\learn-claude-code\.venv\Scripts\python.exe'
-$agentRepo = Join-Path (Split-Path -Parent $PSScriptRoot) 'registration-test-repo'
+$agentRepo = Join-Path (Split-Path -Parent $PSScriptRoot) '历史测试归档\registration-test-repo'
 $mavenBin = 'C:\Users\崔佑齐\.m2\wrapper\dists\apache-maven-3.9.10-bin\53h08a94dg6djh6umvruv7q564\apache-maven-3.9.10\bin'
 $jdkPath = 'C:\Users\崔佑齐\.jdks\ms-17.0.17'
 foreach ($requiredPath in @($agentPython, (Join-Path $mavenBin 'mvn.cmd'), (Join-Path $jdkPath 'bin\javac.exe'), (Join-Path $agentRepo 'ISSUE-002.md'))) {

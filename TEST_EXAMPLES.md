@@ -13,7 +13,7 @@
 ```powershell
 Set-Location 'C:\Users\崔佑齐\PycharmProjects\my new agent\issue-agent'
 $agentPython = 'C:\Users\崔佑齐\PycharmProjects\learn-claude-code\.venv\Scripts\python.exe'
-$agentRepo = 'C:\Users\崔佑齐\PycharmProjects\my new agent\agent-test-repo'
+$agentRepo = 'C:\Users\崔佑齐\PycharmProjects\my new agent\历史测试归档\agent-test-repo'
 $agentEntry = Join-Path (Get-Location) 'main.py'
 ```
 

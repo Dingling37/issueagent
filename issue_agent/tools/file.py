@@ -1,3 +1,5 @@
+import re
+
 from ..workspace.workspace import Workspace
 from ..core.state import AgentState
 from ..trace.tracer import Tracer
@@ -43,12 +45,46 @@ class FileTools:
 
     def edit_file(self, path: str, old_text: str, new_text: str) -> str:
         content = self.text(path)
-        # 必须唯一匹配：如果有多处相同文字，让模型补充上下文再修改，避免改错位置。
-        if not old_text or content.count(old_text) != 1:
-            raise ValueError("old_text must match exactly once; read the file and provide more context")
-        if old_text == new_text:
+        if not old_text:
+            raise ValueError("old_text must not be empty")
+        # 仅将真实 CRLF 视为 LF；空白、缩进和字面量反斜杠仍然精确匹配。
+        normalized = content.replace("\r\n", "\n")
+        old = old_text.replace("\r\n", "\n")
+        new = new_text.replace("\r\n", "\n")
+        start = normalized.find(old)
+        if start < 0:
+            raise ValueError("No match found after normalizing CRLF/LF; read the file again")
+        # 从下一字符查找，也拒绝相互重叠的候选匹配。
+        if normalized.find(old, start + 1) >= 0:
+            raise ValueError("Multiple matches after normalizing CRLF/LF; include more context")
+        if old == new:
             raise ValueError("Edit makes no change")
-        updated = content.replace(old_text, new_text, 1)
+        # 将规范化视图中的边界映射回原文，只替换目标片段，其他字节保持原样。
+        def original_offset(position: int) -> int:
+            extra = 0
+            for match in re.finditer("\r\n", content):
+                if match.start() - extra >= position:
+                    break
+                extra += 1
+            return position + extra
+
+        left, right = original_offset(start), original_offset(start + len(old))
+        replacement = new
+        if "\n" in new:
+            if "\r" in normalized or "\r" in new:
+                raise ValueError("Standalone CR is unsupported for multiline edits")
+            styles = set(re.findall(r"\r?\n", content[left:right]))
+            if len(styles) > 1:
+                raise ValueError("Matched region has mixed line endings; use a smaller edit")
+            if styles:
+                newline = next(iter(styles))
+            else:
+                # 单行插入多行时，沿用该行的结束符；最后一行沿用前一个结束符。
+                following = re.search(r"\r?\n", content[right:])
+                preceding = re.findall(r"\r?\n", content[:left])
+                newline = following.group() if following else (preceding[-1] if preceding else "\n")
+            replacement = new.replace("\n", newline)
+        updated = content[:left] + replacement + content[right:]
         if len(updated.encode("utf-8")) > self.max_bytes:
             raise ValueError("Updated file exceeds 1 MB limit")
         self.workspace.resolve(path).write_bytes(updated.encode("utf-8"))

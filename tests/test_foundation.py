@@ -65,7 +65,7 @@ class FoundationTests(unittest.TestCase):
         ])
         state = agent.run()
         self.assertEqual(state.status, "verification_unavailable")
-        self.assertIn("must match exactly once", json.dumps(agent.model.contexts[1]))
+        self.assertIn("No match found after normalizing CRLF/LF", json.dumps(agent.model.contexts[1]))
         self.assertEqual(state.files_modified, ["Example.java"])
         self.assertEqual(state.files_read, ["Example.java"])
         self.assertTrue((self.root / "Example.java").read_bytes().endswith(b"\r\n"))
