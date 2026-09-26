@@ -1,6 +1,7 @@
 import copy
 import json
 from ..core.state import AgentState
+from .test_summary import summarize_test
 
 
 # 参考 s08 的裁剪思路：只构建本轮输入，不删除 State 中保存的完整消息历史。
@@ -27,10 +28,14 @@ class ContextManager:
             selected.insert(0, group)
             size += length
         # 长期保留的任务锚点：历史变短后，模型仍能看到原始 Issue 和当前状态。
-        # plan 是当前计划，test_results 只包含摘要与日志路径，不包含整份测试日志。
-        anchor = {"issue": state.task, "repo_path": state.repo_path, "plan": state.plan,
+        # 只精简模型看到的投影；State 中的完整计划与测试记录保持原样。
+        plan = copy.deepcopy(state.plan)
+        for item in plan:
+            if state.task and item.get("task", "").endswith("：" + state.task):
+                item["task"] = item["task"][:-(len(state.task) + 1)]
+        anchor = {"issue": state.task, "plan": plan,
                   "current_step": state.current_step, "files_modified": state.files_modified,
-                  "test_summaries": state.test_results[-3:]}
+                  "test_summaries": [summarize_test(result, state.repo_path) for result in state.test_results[-3:]]}
         # deepcopy 防止使用者改动本轮 context 时意外影响原始消息。
         return [{"role": "user", "content": json.dumps(anchor, ensure_ascii=False)},
                 *copy.deepcopy([message for group in selected for message in group])]
