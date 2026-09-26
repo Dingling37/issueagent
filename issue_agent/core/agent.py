@@ -10,6 +10,7 @@ from ..tools.registry import ToolRegistry
 from ..trace.tracer import Tracer
 from ..workspace.workspace import Workspace
 from ..verification.verifier import Verifier, PendingVerifier, IssueVerifier
+from ..verification.submission import SUBMIT_VERIFICATION, VERIFICATION_TOOL_CHOICE
 from ..planning.planner import Planner
 from ..delivery.result import ResultBuilder, result_payload
 import json
@@ -39,7 +40,7 @@ class Agent:
         self.git = GitTools(workspace)
         self.verification_model = verification_model or model
         self.verifier = verifier or IssueVerifier(self.changes, self.runner, self.git, self.tracer,
-            lambda context, budget: self.call_model(context, [], "verification", max_tokens=budget))
+            lambda context, budget: self.call_model(context, [SUBMIT_VERIFICATION], "verification", max_tokens=budget))
         self.workspace = workspace
         self.custom_verifier = verifier is not None
         self.metrics: dict = {}
@@ -66,10 +67,12 @@ class Agent:
         state = self.state
         start = monotonic()
         state.llm_calls += 1
-        self.tracer.record("LLM_CALL", state.step_count, purpose=purpose, context=context, tools=tools, max_tokens=max_tokens)
+        options = {"tool_choice": VERIFICATION_TOOL_CHOICE} if purpose == "verification" else {}
+        self.tracer.record("LLM_CALL", state.step_count, purpose=purpose, context=context,
+                           tools=tools, max_tokens=max_tokens, **options)
         client = self.verification_model if purpose == "verification" else self.model
         try:
-            response = client.call(context, tools, max_tokens=max_tokens)
+            response = client.call(context, tools, max_tokens=max_tokens, **options)
         except Exception as exc:
             self.tracer.record("LLM_ERROR", state.step_count, purpose=purpose, error=str(exc), duration=monotonic()-start)
             raise

@@ -1,4 +1,5 @@
 import json
+import copy
 import os
 from pathlib import Path
 import shutil
@@ -22,8 +23,9 @@ from issue_agent.planning.planner import Planner
 
 
 def decision(completed=True, missing=None) -> ModelResponse:
-    return ModelResponse([{"type": "text", "text": json.dumps({"completed": completed,
-        "reason": "Checked the issue, diff and tests", "missing_requirements": missing or []})}])
+    return ModelResponse([{"type": "tool_use", "id": "review-1", "name": "submit_verification",
+        "input": {"completed": completed, "reason": "Checked the issue, diff and tests",
+                  "missing_requirements": missing or []}}], stop_reason="tool_use")
 
 
 def tool(name: str, **args) -> ModelResponse:
@@ -171,6 +173,80 @@ class Phase3Tests(unittest.TestCase):
         self.assertEqual(agent.state.status, "completed")
         self.assertEqual(model.token_limits[-2:], [4096, 4096])
 
+    def test_verification_tool_is_forced_and_not_exposed_to_executor(self):
+        agent, model = self.review_agent([decision()])
+        self.assertEqual(agent.state.status, "completed")
+        self.assertEqual(model.tool_choices[:2], [None, None])
+        self.assertEqual(model.tool_choices[2], {"type": "tool", "name": "submit_verification"})
+        self.assertEqual([tool["name"] for tool in model.tool_schemas[2]], ["submit_verification"])
+        self.assertNotIn("submit_verification", [tool["name"] for tool in model.tool_schemas[0]])
+        self.assertEqual(len(agent.state.tool_history), 1)  # Submission never executes via Registry.
+        self.assertEqual(agent.state.llm_calls, 3)
+
+    def test_review_receives_snapshot_but_full_test_result_is_retained(self):
+        agent, model = self.review_agent([decision()])
+        self.assertEqual(agent.state.status, "completed")
+        payload = json.loads(model.contexts[2][0]["content"])
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["original_issue"], "Add a field")
+        self.assertEqual(payload["changed_files"], ["Example.java"])
+        self.assertIn("int value", payload["final_diff"])
+        self.assertTrue(all(payload["deterministic_checks"].values()))
+        self.assertTrue(payload["final_test_result"]["passed"])
+        self.assertNotIn(str(self.root), model.contexts[2][0]["content"])
+        for key in ("command", "output_path", "fingerprint", "output_tail"):
+            self.assertIn(key, agent.state.test_results[-1])
+            self.assertNotIn(key, payload["final_test_result"])
+            self.assertNotIn(key, payload["test_history"][-1])
+
+    def test_bad_verification_submissions_retry_then_accept(self):
+        valid = decision()
+        invalid = []
+        for field, value in (("completed", "true"), ("reason", " "), ("missing_requirements", "none")):
+            response = copy.deepcopy(valid)
+            response.content[0]["input"][field] = value
+            invalid.append(response)
+        for change in ("missing", "extra", "unknown", "multiple", "string_input", "missing_id", "wrong_stop"):
+            response = copy.deepcopy(valid)
+            if change == "missing": del response.content[0]["input"]["reason"]
+            elif change == "extra": response.content[0]["input"]["unexpected"] = True
+            elif change == "unknown": response.content[0]["name"] = "edit_file"
+            elif change == "multiple": response.content.append(copy.deepcopy(response.content[0]))
+            elif change == "string_input": response.content[0]["input"] = '{"completed":true}'
+            elif change == "missing_id": del response.content[0]["id"]
+            else: response.stop_reason = "end_turn"
+            invalid.append(response)
+        invalid.extend([ModelResponse([]), ModelResponse([{"type": "text", "text":
+            json.dumps(valid.content[0]["input"])}])])  # Even valid text JSON is not a submission.
+        self.change()
+        with patch.object(self.runner, "command", return_value=self.report_command()):
+            self.assertTrue(self.runner.run()["passed"])
+        for response in invalid:
+            with self.subTest(response=response):
+                replies = iter([response, decision()])
+                budgets = []
+                def review(context, budget):
+                    budgets.append(budget)
+                    return next(replies)
+                result = self.verifier(review).verify(self.state)
+                self.assertTrue(result.passed, result.feedback)
+                self.assertEqual(budgets, [4096, 4096])
+
+    def test_truncated_tool_arguments_are_not_accepted(self):
+        truncated = decision()
+        truncated.stop_reason = "max_tokens"  # Even seemingly complete arguments cannot pass.
+        agent, model = self.review_agent([truncated, decision()])
+        self.assertEqual(agent.state.status, "completed")
+        self.assertEqual(agent.state.verification_retries, 1)
+        self.assertEqual(model.token_limits[-2:], [4096, 8192])
+
+    def test_missing_submission_exhaustion_stops(self):
+        text = ModelResponse([{"type": "text", "text": '{"completed": true}'}])
+        agent, _ = self.review_agent([text, text])
+        self.assertEqual(agent.state.status, "verification_error")
+        self.assertIsNone(agent.state.pr_title)
+        self.assertEqual(len(agent.state.tool_history), 1)
+
     def test_review_retry_exhaustion_stops_without_more_edits(self):
         truncated = ModelResponse([], output_tokens=4096, stop_reason="max_tokens")
         agent, model = self.review_agent([truncated, truncated])
@@ -215,9 +291,9 @@ class Phase3Tests(unittest.TestCase):
         self.assertFalse((agent.tracer.directory / "pr-description.md").exists())
 
     def test_pr_summary_uses_successful_review_not_executor_claim(self):
-        review = ModelResponse([{"type": "text", "text": json.dumps({
+        review = ModelResponse([{"type": "tool_use", "id": "review-1", "name": "submit_verification", "input": {
             "completed": True, "reason": "Adds a value field.\nPreserves existing behavior.",
-            "missing_requirements": []})}])
+            "missing_requirements": []}}], stop_reason="tool_use")
         agent, _ = self.review_agent([review])
         description = agent.state.pr_description
         self.assertIn("> Adds a value field.\n> Preserves existing behavior.", description)
