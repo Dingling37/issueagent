@@ -5,6 +5,7 @@ from uuid import uuid4
 from typing import Any
 from ..workspace.workspace import Workspace
 from ..core.state import AgentState
+from .usage import summarize_usage
 
 
 # 新增的观察记录模块：模型、工具和任务生命周期共用一个任务日志目录。
@@ -17,6 +18,7 @@ class Tracer:
         self.directory.mkdir(parents=True, exist_ok=False)
         self.started = monotonic()
         self.sequence = 0
+        self.usage_events: list[dict] = []
 
     def save(self, name: str, content: str) -> str:
         relative = f"{self.relative}/{name}"
@@ -24,6 +26,9 @@ class Tracer:
         return relative
 
     def record(self, event_type: str, step: int, *, duration: float | None = None, **metadata: Any) -> None:
+        if event_type in ("LLM_CALL", "LLM_RESULT", "LLM_ERROR"):
+            self.usage_events.append({"event": event_type, "purpose": metadata.get("purpose", "unknown"),
+                                      "response": {"raw_usage": metadata.get("response", {}).get("raw_usage")}})
         # JSONL 每行一个事件；metadata 收纳不同事件特有的数据。
         # timestamp 是 UTC 时间，duration 使用 monotonic 计时，单位为秒。
         event = {"timestamp": datetime.now(timezone.utc).isoformat(), "event_type": event_type,
@@ -41,6 +46,7 @@ class Tracer:
         # 汇总真实测试和调用指标。
         # 验证失败不再混入模型截断重试。
         metrics = {"llm_calls": state.llm_calls, "tool_calls": len(state.tool_history),
+                   "llm_usage": summarize_usage(self.usage_events),
                    "token_usage": state.token_usage, "tests": len(state.test_results),
                    "tool_failures": sum(not item["ok"] for item in state.tool_history),
                    "verification_failures": state.verification_failures,

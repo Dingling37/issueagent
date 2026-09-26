@@ -11,6 +11,9 @@ class ModelResponse:
     input_tokens: int = 0
     output_tokens: int = 0
     stop_reason: str = "end_turn"
+    raw_usage: dict[str, Any] | None = None
+    request_id: str | None = None
+    model_id: str | None = None
 
     @property
     def tool_calls(self) -> list[dict[str, Any]]:
@@ -48,7 +51,11 @@ class AnthropicModelClient:
         # SDK 对象转为普通字典，便于写 JSON 日志和保存到 AgentState.messages。
         return ModelResponse([block.model_dump(exclude_none=True) for block in response.content],
                              response.usage.input_tokens, response.usage.output_tokens,
-                             response.stop_reason or "unknown")
+                             response.stop_reason or "unknown",
+                             response.usage.model_dump(exclude_unset=True) if hasattr(response.usage, "model_dump")
+                             else dict(vars(response.usage)),
+                             getattr(response, "_request_id", None),
+                             getattr(response, "model", self.model))
 
 
 @dataclass

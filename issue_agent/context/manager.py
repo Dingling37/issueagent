@@ -33,9 +33,12 @@ class ContextManager:
         for item in plan:
             if state.task and item.get("task", "").endswith("：" + state.task):
                 item["task"] = item["task"][:-(len(state.task) + 1)]
-        anchor = {"issue": state.task, "plan": plan,
+        anchor = {"issue": state.task}
+        current_state = {"plan": plan,
                   "current_step": state.current_step, "files_modified": state.files_modified,
                   "test_summaries": [summarize_test(result, state.repo_path) for result in state.test_results[-3:]]}
         # deepcopy 防止使用者改动本轮 context 时意外影响原始消息。
         return [{"role": "user", "content": json.dumps(anchor, ensure_ascii=False)},
-                *copy.deepcopy([message for group in selected for message in group])]
+                *copy.deepcopy([message for group in selected for message in group]),
+                # 动态状态放在历史之后，避免它的变化打断前面的稳定内容。
+                {"role": "user", "content": json.dumps({"current_state": current_state}, ensure_ascii=False)}]

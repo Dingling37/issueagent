@@ -126,9 +126,10 @@ class FoundationTests(unittest.TestCase):
         context = ContextManager().build(state)
         self.assertLess(len(json.dumps(context)), 50000)
         self.assertIn("original issue", context[0]["content"])
-        self.assertIn("Example.java", context[0]["content"])
+        self.assertIn("Example.java", context[-1]["content"])
         self.assertEqual(len(state.messages), 60)
-        for index in range(1, len(context), 2):
+        self.assertEqual(context[1:-1], state.messages[-14:])  # 7 complete groups fit the existing 48000-character budget.
+        for index in range(1, len(context) - 1, 2):
             self.assertEqual(context[index]["content"][0]["id"], context[index + 1]["content"][0]["tool_use_id"])
 
     def test_model_failure_persists_state(self) -> None:

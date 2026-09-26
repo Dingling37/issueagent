@@ -76,7 +76,8 @@ class Agent:
         try:
             response = client.call(context, tools, max_tokens=max_tokens, **options)
         except Exception as exc:
-            self.tracer.record("LLM_ERROR", state.step_count, purpose=purpose, error=str(exc), duration=monotonic()-start)
+            self.tracer.record("LLM_ERROR", state.step_count, purpose=purpose, error=str(exc),
+                               request_id=getattr(exc, "request_id", None), duration=monotonic()-start)
             raise
         self.tracer.record("LLM_RESULT", state.step_count, purpose=purpose,
                            duration=monotonic()-start, response=asdict(response))
