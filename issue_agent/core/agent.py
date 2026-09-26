@@ -67,7 +67,9 @@ class Agent:
         state = self.state
         start = monotonic()
         state.llm_calls += 1
-        options = {"tool_choice": VERIFICATION_TOOL_CHOICE} if purpose == "verification" else {}
+        # DeepSeek 思考模式不支持强制工具选择；仅审查请求关闭，执行请求不传此参数。
+        options = {"tool_choice": VERIFICATION_TOOL_CHOICE,
+                   "thinking": {"type": "disabled"}} if purpose == "verification" else {}
         self.tracer.record("LLM_CALL", state.step_count, purpose=purpose, context=context,
                            tools=tools, max_tokens=max_tokens, **options)
         client = self.verification_model if purpose == "verification" else self.model
