@@ -21,10 +21,10 @@ def main() -> int:
     parser.add_argument("--test-timeout", type=int, default=600)
     args = parser.parse_args()
     issue = args.issue_file.read_text(encoding="utf-8-sig")
-    model = AnthropicModelClient(args.model)
-    factory = lambda workspace, task: Agent(workspace, task, model, args.max_steps,
-                                             test_timeout=args.test_timeout,
-                                             verification_model=model)
+    def factory(workspace, task):
+        model = AnthropicModelClient(args.model)
+        return Agent(workspace, task, model, args.max_steps,
+                     test_timeout=args.test_timeout, verification_model=model)
     case = BenchmarkCase(args.case_id, args.source_repo, args.commit, issue,
                          args.hidden_tests, args.hidden_destination)
     result = BenchmarkRunner(args.output, factory, test_timeout=args.test_timeout).run(case)

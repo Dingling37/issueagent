@@ -10,6 +10,7 @@ from time import monotonic
 from typing import Any, Callable, Protocol
 from uuid import uuid4
 
+from .preflight import run_preflight
 from ..core.state import AgentState
 from ..tools.test import TestRunner
 from ..trace.tracer import Tracer
@@ -49,11 +50,13 @@ class BenchmarkRunner:
 
     def __init__(self, output_root: Path, agent_factory: Callable[[Workspace, str], AgentRun],
                  *, test_timeout: int = 300,
-                 test_runner_factory: Callable[..., TestRunner] = TestRunner) -> None:
+                 test_runner_factory: Callable[..., TestRunner] = TestRunner,
+                 preflight: Callable[[Workspace, Path], dict] = run_preflight) -> None:
         self.output_root = output_root.resolve()
         self.agent_factory = agent_factory
         self.test_timeout = test_timeout
         self.test_runner_factory = test_runner_factory
+        self.preflight = preflight
 
     @staticmethod
     def _validate(case: BenchmarkCase) -> tuple[Path, Path, str]:
@@ -102,11 +105,20 @@ class BenchmarkRunner:
             "verifier_passed": False, "hidden_tests_passed": False,
             "verifier_false_positive": False, "agent_status": "not_started",
             "agent_error": None, "agent_metrics": {}, "hidden_test_result": None,
+            "benchmark_status": "running", "infrastructure_failure": False, "preflight": None,
         }
         try:
             # At this point hidden files exist only at `hidden`, outside the cloned workspace.
             self._clone_at(source, commit, agent_path)
             agent_workspace = Workspace(agent_path)
+            result["preflight"] = self.preflight(agent_workspace, run_dir)
+            if not result["preflight"].get("passed"):
+                result["infrastructure_failure"] = True
+                result["benchmark_status"] = "infrastructure_failure"
+                result["benchmark_error"] = result["preflight"].get("error")
+                result["agent_metrics"] = {"llm_calls": 0, "tool_calls": 0, "tests": 0,
+                    "token_usage": {"input": 0, "output": 0}}
+                return result
             agent = self.agent_factory(agent_workspace, case.issue)
             state = agent.run()
             result["agent_status"], result["agent_error"] = state.status, state.error
@@ -142,8 +154,11 @@ class BenchmarkRunner:
                 and not hidden_result.get("failures", 0) and not hidden_result.get("errors", 0)
                 and not hidden_result.get("timed_out", False))
             result["judge_outputs"] = str(judge_trace.directory)
+            result["benchmark_status"] = "passed" if result["agent_completed"] and result["hidden_tests_passed"] else "failed"
         except Exception as exc:
             result["benchmark_error"] = f"{type(exc).__name__}: {exc}"
+            result["benchmark_status"] = "infrastructure_failure"
+            result["infrastructure_failure"] = True
         finally:
             result["verifier_false_positive"] = bool(
                 result["verifier_passed"] and not result["hidden_tests_passed"])
