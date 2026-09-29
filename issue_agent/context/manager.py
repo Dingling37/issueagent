@@ -1,7 +1,9 @@
 import copy
 import json
+import os
 from ..core.state import AgentState
 from .test_summary import summarize_test
+from .history import compact_history
 
 
 # 参考 s08 的裁剪思路：只构建本轮输入，不删除 State 中保存的完整消息历史。
@@ -39,6 +41,6 @@ class ContextManager:
                   "test_summaries": [summarize_test(result, state.repo_path) for result in state.test_results[-3:]]}
         # deepcopy 防止使用者改动本轮 context 时意外影响原始消息。
         return [{"role": "user", "content": json.dumps(anchor, ensure_ascii=False)},
-                *copy.deepcopy([message for group in selected for message in group]),
+                *copy.deepcopy([message for group in compact_history(selected, enabled=os.environ.get("ANTHROPIC_BASE_URL", "").rstrip("/") == "https://api.deepseek.com/anthropic") for message in group]),
                 # 动态状态放在历史之后，避免它的变化打断前面的稳定内容。
                 {"role": "user", "content": json.dumps({"current_state": current_state}, ensure_ascii=False)}]
