@@ -130,7 +130,8 @@ class BenchmarkRunner:
             judge_state = AgentState(task=f"Hidden tests for {case.case_id}", repo_path=str(judge_path))
             judge_trace = Tracer(judge_workspace)
             judge_runner = self.test_runner_factory(judge_workspace, judge_state, judge_trace,
-                                                     RepositoryChanges(judge_workspace), self.test_timeout)
+                                                     RepositoryChanges(judge_workspace), self.test_timeout,
+                                                     gradle_no_daemon=True)
             hidden_result = judge_runner.run()
             result["hidden_test_result"] = hidden_result
             # Keep the benchmark invariant explicit even if a future runner implementation
