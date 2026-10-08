@@ -2,6 +2,8 @@
 import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from ..config import ModelConfig, PROVIDERS
+from ..security import protect_secret, redact
 
 
 @dataclass
@@ -27,17 +29,33 @@ class ModelClient(Protocol):
              tool_choice: dict | None = None, thinking: dict | None = None) -> ModelResponse: ...
 
 
+class ModelRequestError(RuntimeError):
+    """Safe provider metadata for Runtime; never expose SDK exception bodies."""
+    def __init__(self, error):
+        from .recovery import FailureClassifier
+        super().__init__(redact(f"Model request failed: {error}"))
+        self.failure_kind = FailureClassifier.classify(error)
+        self.status_code = getattr(error, "status_code", None)
+        self.request_id = getattr(error, "request_id", None)
+        headers = getattr(getattr(error, "response", None), "headers", {}) or getattr(error, "headers", {})
+        retry_after = headers.get("retry-after", headers.get("Retry-After"))
+        self.headers = {"retry-after": retry_after} if retry_after is not None else {}
+
+
 class AnthropicModelClient:
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(self, model: str | None = None, *, config: ModelConfig | None = None) -> None:
         # 延迟导入：离线测试使用 ScriptedModelClient，不必安装 SDK 或提供密钥。
         from anthropic import Anthropic
-        self.model = model or os.environ.get("MODEL_ID")
+        self.model = model or (config.model if config else os.environ.get("MODEL_ID"))
+        self.provider = config.provider if config else "anthropic"
         if not self.model:
             raise ValueError("Set MODEL_ID or pass --model")
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        key = config.api_key if config else os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
             raise ValueError("Set ANTHROPIC_API_KEY in the process environment")
-        self.client = Anthropic(base_url=os.environ.get("ANTHROPIC_BASE_URL"),
-                                timeout=120.0, max_retries=2)
+        protect_secret(key)
+        self.client = Anthropic(api_key=key, base_url=PROVIDERS[config.provider] if config else os.environ.get("ANTHROPIC_BASE_URL"),
+                                timeout=120.0, max_retries=0)
 
     def call(self, context: list[dict], tools: list[dict], *, max_tokens: int = 4096,
              tool_choice: dict | None = None, thinking: dict | None = None) -> ModelResponse:
@@ -46,8 +64,11 @@ class AnthropicModelClient:
         options = {"tool_choice": tool_choice} if tool_choice is not None else {}
         if thinking is not None:
             options["thinking"] = thinking
-        response = self.client.messages.create(model=self.model, system=SYSTEM,
-                                               messages=context, tools=tools, max_tokens=max_tokens, **options)
+        try:
+            response = self.client.messages.create(model=self.model, system=SYSTEM,
+                                                   messages=context, tools=tools, max_tokens=max_tokens, **options)
+        except Exception as exc:
+            raise ModelRequestError(exc) from None
         # SDK 对象转为普通字典，便于写 JSON 日志和保存到 AgentState.messages。
         return ModelResponse([block.model_dump(exclude_none=True) for block in response.content],
                              response.usage.input_tokens, response.usage.output_tokens,
@@ -56,6 +77,11 @@ class AnthropicModelClient:
                              else dict(vars(response.usage)),
                              getattr(response, "_request_id", None),
                              getattr(response, "model", self.model))
+
+
+def create_model_client(config: ModelConfig) -> ModelClient:
+    # Future providers with different protocols get their own adapter here.
+    return AnthropicModelClient(config=config)
 
 
 @dataclass

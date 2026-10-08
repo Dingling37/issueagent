@@ -1,3 +1,4 @@
+from ..core.recovery import RecoveryError
 import json
 import locale
 import os
@@ -35,13 +36,16 @@ def decode_test_output(data: bytes) -> str:
 
 class TestRunner:
     """只运行程序选定的测试命令，模型不能传入 shell、参数或工作目录。"""
+    gradle_no_daemon = False
 
     def __init__(self, workspace: Workspace, state: AgentState, tracer: Tracer,
-                 changes: RepositoryChanges, timeout: int = 300) -> None:
+                 changes: RepositoryChanges, timeout: int = 300, *, gradle_no_daemon: bool = False) -> None:
         if not 1 <= timeout <= 1800:
             raise ValueError("Test timeout must be between 1 and 1800 seconds")
         self.workspace, self.state, self.tracer = workspace, state, tracer
         self.changes, self.timeout = changes, timeout
+        self.gradle_no_daemon = gradle_no_daemon
+        self.on_complete = None
 
     def command(self) -> list[str]:
         windows = os.name == "nt"
@@ -53,7 +57,11 @@ class TestRunner:
             wrapper = "gradlew.bat" if windows else "gradlew"
             executable = str(self.workspace.resolve(wrapper)) if self.workspace.resolve(wrapper).is_file() else shutil.which("gradle")
             # 强制执行，不能把 UP-TO-DATE 或旧缓存报告当成本次验证。
-            arguments = ["test", "--no-daemon", "--rerun-tasks", "--no-build-cache"]
+            arguments = ["test"]
+            # Agent 允许复用 daemon；Hidden Judge 显式禁用，仍强制真实执行测试。
+            if self.gradle_no_daemon:
+                arguments.append("--no-daemon")
+            arguments.extend(["--rerun-tasks", "--no-build-cache"])
         else:
             raise ValueError("No pom.xml or build.gradle(.kts) at repository root")
         if not executable:
@@ -98,6 +106,8 @@ class TestRunner:
         process.wait(timeout=10)
 
     def run(self) -> dict:
+        if getattr(self, "budget_guard", None):
+            self.budget_guard.consume("test_runs")
         number = len(self.state.test_results) + 1
         log_relative = self.tracer.save(f"test-{number:03d}.log", "")
         log_path = self.workspace.resolve(log_relative, internal=True)
@@ -123,6 +133,8 @@ class TestRunner:
                     start_new_session=os.name != "nt")
                 try:
                     while process.poll() is None:
+                        if getattr(self, "budget_guard", None):
+                            self.budget_guard.check_runtime()
                         if monotonic() - started > self.timeout:
                             result["timed_out"] = True
                             self.stop(process)
@@ -158,6 +170,8 @@ class TestRunner:
                 and result["fingerprint"] == self.changes.fingerprint())
             if not result["passed"]:
                 result["reason"] = "Test command failed, timed out, changed sources, or produced no fresh passing tests"
+        except RecoveryError:
+            raise
         except Exception as exc:
             result["reason"] = f"{type(exc).__name__}: {exc}"
         with log_path.open("rb") as stream:
@@ -167,6 +181,8 @@ class TestRunner:
         self.state.test_results.append(result)
         self.tracer.record("TEST_PASSED" if result["passed"] else "TEST_FAILED",
                            self.state.step_count, duration=result["duration"], result=result)
+        if self.on_complete:
+            self.on_complete()
         return result
 
     def run_tool(self) -> str:

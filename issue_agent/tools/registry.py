@@ -1,3 +1,6 @@
+from ..core.recovery import RecoveryError
+from ..persistence import PersistenceError
+from sqlalchemy.exc import SQLAlchemyError
 import json
 from time import monotonic
 from typing import Any
@@ -26,6 +29,8 @@ class ToolRegistry:
 
     def execute(self, name: str, arguments: Any) -> tuple[str, bool]:
         # 返回值是 (给模型的结果字符串, 是否成功)，Agent 据此设置 is_error。
+        if getattr(self, "budget_guard", None):
+            self.budget_guard.consume("tool_calls")
         start = monotonic()
         self.tracer.record("TOOL_CALL", self.state.step_count, name=name, arguments=arguments)
         try:
@@ -41,6 +46,8 @@ class ToolRegistry:
                     raise ValueError(f"{key} must be {kind.__name__}")
             # **arguments 把字典展开为关键字参数；路径安全由具体文件工具的 Workspace 检查。
             output, ok = tool.handler(**arguments), True
+        except (RecoveryError, PersistenceError, SQLAlchemyError):
+            raise
         except Exception as exc:
             # 普通工具失败也返回结果，让模型能读到原因并纠正下一次调用。
             output, ok = f"{type(exc).__name__}: {exc}", False

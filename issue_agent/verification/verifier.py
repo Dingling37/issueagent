@@ -1,3 +1,4 @@
+from ..core.recovery import RecoveryError
 import json
 from dataclasses import dataclass
 from typing import Callable
@@ -10,6 +11,7 @@ from ..workspace.changes import RepositoryChanges
 from ..trace.tracer import Tracer
 from typing import Protocol
 from ..core.state import AgentState
+from ..persistence import PersistenceError
 
 
 # 新增的完成判定入口：Agent 自己说完成，不等于任务经过验证。
@@ -86,8 +88,10 @@ class IssueVerifier:
             for attempt in range(1, 3):
                 try:
                     response = self.review(context, budget)
+                except (PersistenceError, RecoveryError):
+                    raise
                 except Exception as exc:
-                    # 网络/限流重试由 SDK 有界处理；认证等错误不再触发执行模型。
+                    # Transport recovery belongs to Runtime; standalone review errors remain infrastructure errors.
                     return VerificationResult(False, f"Verification API error: {type(exc).__name__}: {exc}", True)
                 try:
                     if response.stop_reason == "max_tokens":
@@ -115,6 +119,8 @@ class IssueVerifier:
                 return VerificationResult(False, "Files changed during verification; rerun tests and review.")
             passed = decision["completed"] and not decision["missing_requirements"]
             return VerificationResult(passed, json.dumps(decision, ensure_ascii=False))
+        except (PersistenceError, RecoveryError):
+            raise
         except Exception as exc:
             # 内部异常不能伪装成代码缺陷，不交给执行模型继续改代码。
             return VerificationResult(False, f"Verification infrastructure error: {type(exc).__name__}: {exc}", True)

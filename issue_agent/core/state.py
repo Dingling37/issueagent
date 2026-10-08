@@ -29,13 +29,19 @@ class AgentState:
     step_count: int = 0
     # 当前合计响应截断重试和验证拒绝次数，不包含 SDK 内部网络重试。
     retry_count: int = 0
+    budget_usage: dict[str, int] = field(default_factory=dict)
+    tool_calls: int = 0
+    test_runs: int = 0
+    runtime_seconds: float = 0.0
     llm_calls: int = 0
     verification_failures: int = 0
     verification_retries: int = 0  # 验证回复截断/格式错误后的内部重试
     verification_results: list[dict[str, Any]] = field(default_factory=list)
     repository: dict[str, Any] = field(default_factory=dict)
+    git_task: dict[str, str | None] = field(default_factory=dict)
     final_response: str = ""
     diff_path: str | None = None
+    delivery_diff: dict[str, Any] = field(default_factory=dict)
     # 交付阶段记录最终仍存在的变化，区别于曾经写过的 files_modified。
     changed_files: list[str] = field(default_factory=list)
     pr_title: str | None = None
