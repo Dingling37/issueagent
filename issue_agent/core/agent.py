@@ -73,8 +73,8 @@ class Agent:
             Tool("list_files", "List repository files, excluding generated directories", {}, search.list_files),
             Tool("read_file", "Read a UTF-8 file, at most 400 lines", {"path": str, "start_line": int, "end_line": int}, files.read_file),
             Tool("search_code", "Search literal text in repository files", {"query": str}, search.search_code),
-            Tool("edit_file", "Modify an existing UTF-8 file, including adding tests to an existing test class. Read the current file with read_file first, then provide old_text that uniquely matches the content to replace. Use this tool even when replacing the entire contents of an existing file.", {"path": str, "old_text": str, "new_text": str}, files.edit_file, Permission.WRITE),
-            Tool("create_file", "Create a new UTF-8 file only at a path that does not exist. Check repository files before choosing this tool. Never use it for an existing file, even to replace its entire contents; use read_file followed by edit_file instead. Existing files are never overwritten.", {"path": str, "content": str}, files.create_file, Permission.WRITE),
+            Tool("edit_file", "Modify an existing UTF-8 file, including adding tests to an existing test class. Read the current file with read_file first, then provide old_text that uniquely matches the content to replace. Use this tool even when replacing the entire contents of an existing file.", {"path": str, "old_text": str, "new_text": str}, files.edit_file, Permission.WRITE, mutates_workspace=True),
+            Tool("create_file", "Create a new UTF-8 file only at a path that does not exist. Check repository files before choosing this tool. Never use it for an existing file, even to replace its entire contents; use read_file followed by edit_file instead. Existing files are never overwritten.", {"path": str, "content": str}, files.create_file, Permission.WRITE, mutates_workspace=True),
         ]:
             self.registry.register(tool)
 
@@ -154,6 +154,30 @@ class Agent:
         self.safe_state = deepcopy(self.state.__dict__)
         self.safe_phase = phase
 
+    def execute_pending_tools(self):
+        state = self.state
+        batch = state.pending_tool_batch
+        calls, results = batch["calls"], batch["results"]
+        remaining = calls[len(results):]
+        self.budget.check("tool_calls", len(remaining))
+        self.budget.check("test_runs", sum(c["name"] == "run_test" for c in remaining))
+        for call in remaining:
+            mutates = self.registry.mutates_workspace(call["name"])
+            if mutates:
+                self.planner.advance(state, 2)
+            elif call["name"] == "run_test":
+                self.planner.advance(state, 3)
+            output, ok = self.registry.execute(call["name"], call["input"])
+            results.append({"type": "tool_result", "tool_use_id": call["id"],
+                            "content": output, "is_error": not ok})
+            # The handler, output recording, and result confirmation precede persistence.
+            # Persistence failures escape before any following tool is invoked.
+            if ok and mutates:
+                self.checkpoint("execution")
+        state.messages.append({"role": "user", "content": results})
+        state.pending_tool_batch = {}
+        self.checkpoint("execution")
+
     def run(self) -> AgentState:
         state = self.state
         self.budget.started = self.budget.clock()
@@ -169,7 +193,10 @@ class Agent:
                 self.planner.advance(state, 1)
                 self.tracer.record("PLAN_CREATED", state.step_count, plan=state.plan)
                 self.checkpoint("execution")
-            while state.step_count < self.max_steps or self.resume_phase in {"verification", "delivery", "artifacts"}:
+            while state.step_count < self.max_steps or state.pending_tool_batch or self.resume_phase in {"verification", "delivery", "artifacts"}:
+                if state.pending_tool_batch:
+                    self.execute_pending_tools()
+                    continue
                 if self.resume_phase not in {"verification", "delivery", "artifacts"}:
                     state.step_count += 1
                     # ① 组装本轮输入：任务信息 + 状态摘要 + 近期完整交互。
@@ -187,21 +214,8 @@ class Agent:
                     state.messages.append({"role": "assistant", "content": response.content})
                     # ③ 有工具请求：逐个执行。普通工具错误由 Registry 转成反馈，不中断循环。
                     if response.tool_calls:
-                        self.budget.check("tool_calls", len(response.tool_calls))
-                        self.budget.check("test_runs", sum(c["name"] == "run_test" for c in response.tool_calls))
-                        results = []
-                        for call in response.tool_calls:
-                            if call["name"] in ("edit_file", "create_file"):
-                                self.planner.advance(state, 2)
-                            elif call["name"] == "run_test":
-                                self.planner.advance(state, 3)
-                            output, ok = self.registry.execute(call["name"], call["input"])
-                            # tool_use_id 把结果与模型提出的那一次调用对应起来。
-                            results.append({"type": "tool_result", "tool_use_id": call["id"],
-                                            "content": output, "is_error": not ok})
-                        # 工具结果按 Anthropic 消息格式放在 user 消息里，并非用户亲自输入。
-                        state.messages.append({"role": "user", "content": results})
-                        self.checkpoint("execution")
+                        state.pending_tool_batch = {"calls": response.tool_calls, "results": []}
+                        self.execute_pending_tools()
                         continue
                     # ④ 没有工具请求也不能直接结束：必须交给 Verifier 判定。
                     state.final_response = "\n".join(b.get("text", "") for b in response.content if b.get("type") == "text")

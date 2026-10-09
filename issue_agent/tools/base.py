@@ -20,6 +20,8 @@ class Tool:
     # handler 例如 files.read_file；模型只看到 schema，不会拿到 Python 函数。
     handler: Callable[..., str]
     permission: Permission = Permission.READ
+    # Runtime metadata only; never changes the model-facing tool schema.
+    mutates_workspace: bool = False
 
     def schema(self) -> dict:
         # 将 Python 类型转换为模型 API 接受的 JSON Schema 类型名。

@@ -27,6 +27,10 @@ class ToolRegistry:
     def schemas(self) -> list[dict]:
         return [tool.schema() for tool in self.tools.values()]
 
+    def mutates_workspace(self, name: str) -> bool:
+        tool = self.tools.get(name)
+        return bool(tool and tool.mutates_workspace)
+
     def execute(self, name: str, arguments: Any) -> tuple[str, bool]:
         # 返回值是 (给模型的结果字符串, 是否成功)，Agent 据此设置 is_error。
         if getattr(self, "budget_guard", None):

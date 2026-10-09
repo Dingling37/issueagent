@@ -15,6 +15,8 @@ class AgentState:
     current_step: int = 0
     # 模型回复和工具结果；ContextManager 从中选取近期交互发送给模型。
     messages: list[dict[str, Any]] = field(default_factory=list)
+    # Only the current batch continuation, embedded in the ordinary checkpoint.
+    pending_tool_batch: dict[str, Any] = field(default_factory=dict)
     # read_file 显式读取过的文件；搜索内部读取不计入此列表。
     files_read: list[str] = field(default_factory=list)
     # 工具曾修改过的文件，不代表最终 diff 一定仍有变化。
