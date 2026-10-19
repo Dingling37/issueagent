@@ -12,6 +12,7 @@ def settings_for(agent, test_timeout):
         return {"provider": getattr(client, "provider", "anthropic"),
                 "model": getattr(client, "model", "unknown")}
     return {"execution": model(agent.model), "verification": model(agent.verification_model),
+            "skills_enabled": agent.skills is not None,
             "budget": asdict(agent.budget.limits),
             "recovery_policy": asdict(agent.recovery_policy),
             "max_steps": agent.max_steps, "test_timeout": test_timeout,
@@ -28,7 +29,7 @@ def attach(store, agent, test_timeout):
     agent.persistence = RuntimePersistence(store, run_id, settings)
     return run_id
 
-
+#程序重启后 原来的agent对象已经不存在了 恢复时需要重新创建一个agent再把旧的任务的进度装进去
 def restore(store, run_id, model_factory, agent_factory):
     from ..workspace.workspace import Workspace
     from ..trace.tracer import Tracer
@@ -37,6 +38,13 @@ def restore(store, run_id, model_factory, agent_factory):
     if settings.get("state_schema_version") != 1 or checkpoint["phase"] not in {
             "execution", "verification", "delivery", "artifacts", "terminal"}:
         raise PersistenceError("Unsupported persisted runtime schema/phase; resume refused")
+    from ..skills import SkillRegistry
+    skills = SkillRegistry() if settings.get("skills_enabled") else None
+    loaded = checkpoint["state"].get("loaded_skills", {})
+    if loaded and skills is None:
+        raise PersistenceError("Loaded Skills require a Skill-enabled run; resume refused")
+    if skills:
+        skills.validate_loaded(loaded)  # Before clients, artifacts or model calls.
     workspace = Workspace(run["repo_path"])
     # Validate before constructing clients or creating any artifacts.
     from ..workspace.changes import RepositoryChanges
@@ -64,6 +72,8 @@ def restore(store, run_id, model_factory, agent_factory):
     # Existing tools hold references to state; restore fields in place.
     restored = AgentState(**checkpoint["state"])
     agent.state.__dict__.update(restored.__dict__)
+    if skills:
+        agent.enable_skills(skills)
     agent.changes.baseline = baseline
     from ..core.recovery import BudgetLimits, RecoveryPolicy
     agent.recovery_policy = RecoveryPolicy(**settings.get("recovery_policy", {}))

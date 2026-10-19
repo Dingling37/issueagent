@@ -74,6 +74,7 @@ class RuntimePersistence:
             **normalized_tokens(response.raw_usage if response else None))
 
 
+#恢复之前需要核对现场
 def validate_resume(agent, run, checkpoint):
     if run["status"].upper() in {"COMPLETED", "FAILED", "CANCELLED"} or checkpoint["phase"] == "terminal" or checkpoint["state"]["status"] == "completed":
         raise PersistenceError("Run is terminal; cannot resume")
