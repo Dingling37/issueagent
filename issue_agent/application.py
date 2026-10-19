@@ -32,9 +32,14 @@ def run_issue(repo, issue, *, model_name=None, verification_model=None,
     store = Store.from_environment()
     if store:
         store.check()  # Fail before creating/changing a task branch.
+    from .skills import SkillRegistry
+    skills = SkillRegistry()
+    catalog = skills.catalog()  # Validate imports before changing the task branch.
     git_task = prepare_task_branch(workspace)
     agent = agent_factory(workspace, issue, model, max_steps,
                   test_timeout=test_timeout, verification_model=reviewer)
+    if catalog:
+        agent.enable_skills(skills)
     if budget is not None:
         agent.budget.limits = budget
     presentation = Presentation(observer_factory, agent.tracer)

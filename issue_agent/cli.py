@@ -73,7 +73,37 @@ def read_issue(text=None, file=None):
     return text
 
 
+def skill_main(argv):
+    import json
+    from .skills import SkillRegistry
+    parser = argparse.ArgumentParser(prog="issue-agent skill", description="Manage local declarative Skills")
+    commands = parser.add_subparsers(dest="action", required=True)
+    commands.add_parser("add").add_argument("path", type=Path)
+    commands.add_parser("list")
+    commands.add_parser("show").add_argument("name")
+    commands.add_parser("remove").add_argument("name")
+    args = parser.parse_args(argv)
+    try:
+        registry = SkillRegistry()
+        if args.action == "add":
+            value = registry.add(args.path).summary()
+        elif args.action == "list":
+            value = registry.catalog()
+        elif args.action == "show":
+            value = registry.get(args.name).to_dict()
+        else:
+            registry.remove(args.name)
+            value = {"removed": args.name}
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+        return 0
+    except (ValueError, OSError) as exc:
+        print(redact(f"Skill: {exc}"), file=sys.stderr)
+        return 1
+
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "skill":
+        return skill_main(argv[1:])
     parser = argparse.ArgumentParser(description="Run Issue Agent in the current clean Git repository")
     parser.add_argument("command", nargs="?", choices=["config", "resume"])
     parser.add_argument("run_id", nargs="?")
